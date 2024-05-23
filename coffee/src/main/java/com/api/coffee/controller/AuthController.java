@@ -1,55 +1,76 @@
 package com.api.coffee.controller;
 
+import com.api.coffee.DTO.LoginDTO;
 import com.api.coffee.entity.User;
-import com.api.coffee.model.JwtResponse;
-import com.api.coffee.model.LoginRequest;
-import com.api.coffee.service.JWTService;
-import com.api.coffee.service.UserService;
+import com.api.coffee.repository.UserRepository;
+import com.api.coffee.service.JwtService;
+import com.api.coffee.utils.AccountType;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
-import javax.validation.Valid;
-
 @RestController
+@RequestMapping("/auth")
 @CrossOrigin("*")
-@RequestMapping("/api")
-public class UserController {
-    @Autowired
-    private UserService userService;
+public class AuthController {
 
     @Autowired
-    private JWTService jwtService;
-
+    private UserRepository userRepository;
+    @Autowired
+    private AuthenticationManager authenticationManager;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private JwtService jwtService;
 
     @PostMapping("/signin")
-    public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
-        User user = userService.findUserByEmail(loginRequest.getEmail());
-        if (user != null && passwordEncoder.matches(loginRequest.getPassword(), user.getPassword())) {
-            String token = jwtService.generateToken(user);
-            return ResponseEntity.ok(new JwtResponse(token));
+    public ResponseEntity<String> signIn(@RequestBody LoginDTO loginDto) {
+        try {
+            System.out.println("Auth server started correctly for : " + loginDto.getEmail());
+            Authentication authUser = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(loginDto.getEmail(), loginDto.getPassword()));
+
+            String jwtToken = jwtService.generateToken(authUser);
+            System.out.println("Operation finished with success");
+            return ResponseEntity.ok(jwtToken);
+        } catch (BadCredentialsException e) {
+            System.out.println("Incorrect email or password: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect email or password");
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println("Authentication failed: " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Authentication failed: " + e.getMessage());
         }
-        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Login failed due to invalid credentials or user not found.");
     }
+
+
     @PostMapping("/signup")
-    public ResponseEntity<?> registerUser(@Valid @RequestBody SignUpRequest signUpRequest) {
-        if (userService.existsByEmail(signUpRequest.getEmail())) {
-            return ResponseEntity
-                    .badRequest()
-                    .body("Error: Email is already in use!");
+    public ResponseEntity<String> signUp(@RequestBody User user) {
+        System.out.println("Started correctly registration for user: ");
+        if (user == null || user.getEmail() == null || user.getPassword() == null) {
+            return new ResponseEntity<>("Incorrect data. Email or password is null.", HttpStatus.CONFLICT);
         }
 
-        User newUser = new User(signUpRequest.getName(),
-                signUpRequest.getEmail(),
-                passwordEncoder.encode(signUpRequest.getPassword()));
+        String email = user.getEmail();
+        if (userRepository.findByEmail(email).isPresent()) {
+            return new ResponseEntity<>("User with this email already exists", HttpStatus.CONFLICT);
+        }
 
-        userService.save(newUser);
+        try {
+            String encodedPassword = passwordEncoder.encode(user.getPassword().trim());
+            user.setPassword(encodedPassword);
+            user.setAccountType(AccountType.USER);
+            userRepository.save(user);
+        } catch (Exception e) {
+            return new ResponseEntity<>("An error occurred during registration. Please try again.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
 
-        String token = jwtService.generateToken(newUser);
-        return ResponseEntity.ok(new JwtResponse(token, newUser.getId(), newUser.getName(), newUser.getEmail()));
+        return new ResponseEntity<>("User registered successfully", HttpStatus.CREATED);
     }
+
 }

@@ -1,8 +1,8 @@
 package com.api.coffee.config;
 
-import com.app.backend.model.User;
-import com.app.backend.repository.UserRepository;
-import com.app.backend.service.JwtService;
+import com.api.coffee.entity.User;
+import com.api.coffee.repository.UserRepository;
+import com.api.coffee.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
