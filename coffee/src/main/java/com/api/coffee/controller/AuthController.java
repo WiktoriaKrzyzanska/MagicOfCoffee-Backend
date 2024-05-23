@@ -30,7 +30,8 @@ public class AuthController {
     private final JwtService jwtService;
 
     @Autowired
-    public AuthController(UserRepository userRepository, AuthenticationManager authenticationManager, PasswordEncoder passwordEncoder, JwtService jwtService) {
+    public AuthController(UserRepository userRepository, AuthenticationManager authenticationManager,
+                          PasswordEncoder passwordEncoder, JwtService jwtService) {
         this.userRepository = userRepository;
         this.authenticationManager = authenticationManager;
         this.passwordEncoder = passwordEncoder;
