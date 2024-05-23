@@ -14,63 +14,82 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @RestController
 @RequestMapping("/auth")
 @CrossOrigin("*")
 public class AuthController {
 
+    private static final Logger logger = LoggerFactory.getLogger(AuthController.class);
+
+    private final UserRepository userRepository;
+    private final AuthenticationManager authenticationManager;
+    private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
+
     @Autowired
-    private UserRepository userRepository;
-    @Autowired
-    private AuthenticationManager authenticationManager;
-    @Autowired
-    private PasswordEncoder passwordEncoder;
-    @Autowired
-    private JwtService jwtService;
+    public AuthController(UserRepository userRepository, AuthenticationManager authenticationManager, PasswordEncoder passwordEncoder, JwtService jwtService) {
+        this.userRepository = userRepository;
+        this.authenticationManager = authenticationManager;
+        this.passwordEncoder = passwordEncoder;
+        this.jwtService = jwtService;
+    }
 
     @PostMapping("/signin")
     public ResponseEntity<String> signIn(@RequestBody LoginDTO loginDto) {
+        logger.info("Auth server started correctly for : {}", loginDto.getEmail());
         try {
-            System.out.println("Auth server started correctly for : " + loginDto.getEmail());
-            Authentication authUser = authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(loginDto.getEmail(), loginDto.getPassword()));
-
+            Authentication authUser = authenticateUser(loginDto.getEmail(), loginDto.getPassword());
             String jwtToken = jwtService.generateToken(authUser);
-            System.out.println("Operation finished with success");
+            logger.info("Operation finished with success");
             return ResponseEntity.ok(jwtToken);
         } catch (BadCredentialsException e) {
-            System.out.println("Incorrect email or password: " + e.getMessage());
+            logger.error("Incorrect email or password: {}", e.getMessage());
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Incorrect email or password");
         } catch (Exception e) {
-            e.printStackTrace();
-            System.out.println("Authentication failed: " + e.getMessage());
+            logger.error("Authentication failed: {}", e.getMessage(), e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Authentication failed: " + e.getMessage());
         }
     }
 
-
     @PostMapping("/signup")
     public ResponseEntity<String> signUp(@RequestBody User user) {
-        System.out.println("Started correctly registration for user: ");
-        if (user == null || user.getEmail() == null || user.getPassword() == null) {
-            return new ResponseEntity<>("Incorrect data. Email or password is null.", HttpStatus.CONFLICT);
+        logger.info("Started correctly registration for user: {}", user.getEmail());
+        if (isInvalidUser(user)) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("Incorrect data. Email or password is null.");
         }
 
-        String email = user.getEmail();
-        if (userRepository.findByEmail(email).isPresent()) {
-            return new ResponseEntity<>("User with this email already exists", HttpStatus.CONFLICT);
+        if (userExists(user.getEmail())) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("User with this email already exists");
         }
 
         try {
-            String encodedPassword = passwordEncoder.encode(user.getPassword().trim());
-            user.setPassword(encodedPassword);
-            user.setAccountType(AccountType.USER);
-            userRepository.save(user);
+            registerUser(user);
+            return ResponseEntity.status(HttpStatus.CREATED).body("User registered successfully");
         } catch (Exception e) {
-            return new ResponseEntity<>("An error occurred during registration. Please try again.", HttpStatus.INTERNAL_SERVER_ERROR);
+            logger.error("An error occurred during registration: {}", e.getMessage(), e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("An error occurred during registration. Please try again.");
         }
-
-        return new ResponseEntity<>("User registered successfully", HttpStatus.CREATED);
     }
 
+    private Authentication authenticateUser(String email, String password) {
+        return authenticationManager.authenticate(new UsernamePasswordAuthenticationToken(email, password));
+    }
+
+    private boolean isInvalidUser(User user) {
+        return user == null || user.getEmail() == null || user.getPassword() == null;
+    }
+
+    private boolean userExists(String email) {
+        return userRepository.findByEmail(email).isPresent();
+    }
+
+    private void registerUser(User user) {
+        String encodedPassword = passwordEncoder.encode(user.getPassword().trim());
+        user.setPassword(encodedPassword);
+        user.setAccountType(AccountType.USER);
+        userRepository.save(user);
+    }
 }
